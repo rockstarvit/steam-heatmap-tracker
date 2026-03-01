@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steam Heatmap</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 280px;
+      background: #1a1a2e;
+      color: #e0e0f0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+      user-select: none;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #e8f4fd;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header h1 span.icon { font-size: 18px; }
+
+    .header p {
+      font-size: 11px;
+      color: #7ea8cc;
+      margin-top: 3px;
+    }
+
+    .status-bar {
+      background: #0d0d1a;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.3s;
+    }
+    .dot.active { background: #4cff91; box-shadow: 0 0 6px #4cff91aa; }
+    .dot.heatmap-on { background: #ff7043; box-shadow: 0 0 6px #ff7043aa; }
+
+    .point-count {
+      font-size: 11px;
+      color: #5a9fd4;
+      font-weight: 600;
+    }
+
+    .controls {
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 9px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      letter-spacing: 0.02em;
+    }
+
+    .btn:active { transform: scale(0.97); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #e65100, #ff7043);
+      color: #fff;
+    }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-primary.active {
+      background: linear-gradient(135deg, #1b5e20, #43a047);
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.07);
+      color: #c8d8e8;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.12); }
+
+    .btn-danger {
+      background: rgba(180, 30, 30, 0.3);
+      color: #ff8a80;
+      border: 1px solid rgba(255, 100, 100, 0.2);
+    }
+    .btn-danger:hover { background: rgba(200, 40, 40, 0.45); }
+
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      margin: 2px 0;
+    }
+
+    .legend {
+      padding: 0 16px 14px;
+    }
+
+    .legend-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #556;
+      margin-bottom: 7px;
+    }
+
+    .gradient-bar {
+      height: 10px;
+      border-radius: 5px;
+      background: linear-gradient(to right,
+        #0000a0,
+        #0000ff,
+        #00dcff,
+        #00ff00,
+        #ffff00,
+        #ff5000,
+        #ff0000
+      );
+      margin-bottom: 4px;
+    }
+
+    .legend-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: #667;
+    }
+
+    .url-display {
+      padding: 8px 16px;
+      background: rgba(0,0,0,0.3);
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .url-display p {
+      font-size: 9px;
+      color: #445;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .not-steam {
+      padding: 20px 16px;
+      text-align: center;
+      color: #556;
+      font-size: 12px;
+    }
+
+    .not-steam .emoji { font-size: 28px; display: block; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="icon">🔥</span> Steam Heatmap</h1>
+  <p>Cursor dwell &amp; scroll-stop tracker</p>
+</div>
+
+<div id="main-content">
+  <div class="status-bar">
+    <div class="status-indicator">
+      <div class="dot" id="track-dot"></div>
+      <span id="track-label">Tracking off</span>
+    </div>
+    <span class="point-count" id="point-count">0 pts</span>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="btn-heatmap">
+      <span>👁</span> Show Heatmap
+    </button>
+    <button class="btn btn-secondary" id="btn-track">
+      <span>⏸</span> Pause Tracking
+    </button>
+    <hr class="divider" />
+    <button class="btn btn-secondary" id="btn-export">
+      <span>📋</span> Copy Data (JSON)
+    </button>
+    <button class="btn btn-danger" id="btn-clear">
+      <span>🗑</span> Clear This Page's Data
+    </button>
+  </div>
+
+  <div class="legend">
+    <p class="legend-title">Intensity scale</p>
+    <div class="gradient-bar"></div>
+    <div class="legend-labels">
+      <span>Low dwell</span>
+      <span>High dwell</span>
+    </div>
+  </div>
+
+  <div class="url-display">
+    <p id="page-url">—</p>
+  </div>
+</div>
+
+<div id="not-steam-msg" class="not-steam" style="display:none">
+  <span class="emoji">🎮</span>
+  Navigate to the <strong>Steam Store</strong> to activate tracking.
+  <br/><br/>
+  <small style="color:#334">store.steampowered.com</small>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
