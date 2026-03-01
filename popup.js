@@ -88,7 +88,8 @@ async function init() {
   document.getElementById('btn-clear').addEventListener('click', async () => {
     if (!confirm('Clear all heatmap data for this page?')) return;
     await sendMsg('clear_data');
-    updateUI({ isTracking: true, isVisible: false, pointCount: 0 });
+    const status = await sendMsg('get_status');
+    updateUI(status);
   });
 
   document.getElementById('btn-export').addEventListener('click', async () => {

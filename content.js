@@ -1,25 +1,27 @@
 /**
  * Steam Heatmap Tracker — Content Script
- * 
+ *
  * Tracking logic:
  *  - CURSOR DWELL: every 200ms, if cursor hasn't moved >8px, record a "dwell point"
- *    weighted by dwell duration at the viewport-relative position.
+ *    weighted by dwell duration at the absolute page position.
  *  - SCROLL STOP: after scrolling, a 600ms debounce fires and records a point
  *    at the current cursor position (or viewport center if cursor is unknown).
- * 
+ *
  * Storage: chrome.storage.local keyed by page URL (pathname).
- * Heatmap: Canvas overlay drawn with radial gradients → colormap lookup.
+ * Points are stored as absolute page coordinates (px), scroll-position-aware.
+ * Heatmap: full-page canvas overlay drawn with radial gradients → colormap lookup.
  */
 
 (function () {
   'use strict';
 
   /* ─── Config ──────────────────────────────────────────────────── */
-  const DWELL_INTERVAL_MS   = 200;   // poll interval
-  const DWELL_MOVE_THRESHOLD = 8;    // px — if cursor moved less than this, record dwell
-  const SCROLL_DEBOUNCE_MS  = 600;   // ms after last scroll event to record a scroll-stop point
-  const POINT_RADIUS        = 90;    // heatmap blob radius in px
-  const MAX_POINTS          = 4000;  // cap per URL to avoid storage bloat
+  const DWELL_INTERVAL_MS    = 200;   // poll interval
+  const DWELL_MOVE_THRESHOLD = 8;     // px — if cursor moved less than this, record dwell
+  const SCROLL_DEBOUNCE_MS   = 600;   // ms after last scroll event to record a scroll-stop point
+  const POINT_RADIUS         = 90;    // heatmap blob radius in px
+  const MAX_POINTS           = 4000;  // cap per URL to avoid storage bloat
+  const RENDER_THROTTLE_MS   = 1000;  // min ms between live re-renders while heatmap is visible
 
   /* ─── State ───────────────────────────────────────────────────── */
   let cursorX = -1, cursorY = -1;
@@ -29,13 +31,13 @@
   let heatmapCanvas = null;
   let scrollTimer = null;
   let dwellTimer = null;
-  let points = [];          // { x, y, w } — x/y are viewport-fraction [0..1], w = weight
+  let renderScheduled = false;
+  let points = [];          // { x, y, w } — x/y are absolute page px, w = weight
   const storageKey = 'heatmap_' + location.pathname.replace(/\//g, '_');
 
   /* ─── Load saved points ───────────────────────────────────────── */
   chrome.storage.local.get([storageKey], (result) => {
     points = result[storageKey] || [];
-    // Auto-start tracking
     startTracking();
   });
 
@@ -43,12 +45,9 @@
   function startTracking() {
     if (isTracking) return;
     isTracking = true;
-
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('scroll', onScroll, { passive: true });
-
     dwellTimer = setInterval(checkDwell, DWELL_INTERVAL_MS);
-    console.log('[HeatmapTracker] Tracking started on', location.pathname);
   }
 
   function stopTracking() {
@@ -89,16 +88,27 @@
 
   function addPoint(clientX, clientY, weight) {
     if (points.length >= MAX_POINTS) points.shift(); // rolling window
-    // Store as viewport fraction so it's resolution-independent
+    // Store as absolute page coordinates — viewport position + current scroll offset
     points.push({
-      x: clientX / window.innerWidth,
-      y: clientY / window.innerHeight,
+      x: clientX + window.scrollX,
+      y: clientY + window.scrollY,
       w: weight
     });
-    // Throttle storage writes — only save every 30 new points
     if (points.length % 30 === 0) savePoints();
-    // Live-update heatmap if visible
-    if (isHeatmapVisible) renderHeatmap();
+    if (isHeatmapVisible) scheduleRender();
+  }
+
+  /**
+   * Throttle live re-renders to at most once per RENDER_THROTTLE_MS.
+   * showHeatmap() still renders immediately on demand.
+   */
+  function scheduleRender() {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    setTimeout(() => {
+      renderScheduled = false;
+      if (isHeatmapVisible) renderHeatmap();
+    }, RENDER_THROTTLE_MS);
   }
 
   function savePoints() {
@@ -110,11 +120,9 @@
     heatmapCanvas = document.createElement('canvas');
     heatmapCanvas.id = '__steam_heatmap_overlay__';
     Object.assign(heatmapCanvas.style, {
-      position:      'fixed',
+      position:      'absolute',
       top:           '0',
       left:          '0',
-      width:         '100vw',
-      height:        '100vh',
       zIndex:        '2147483647',
       pointerEvents: 'none',
       opacity:       '0.82',
@@ -123,23 +131,22 @@
     document.body.appendChild(heatmapCanvas);
   }
 
-  function resizeCanvas() {
-    if (!heatmapCanvas) return;
-    heatmapCanvas.width  = window.innerWidth;
-    heatmapCanvas.height = window.innerHeight;
-  }
-
   /**
    * Two-pass rendering:
-   * Pass 1 — draw radial alpha blobs on a greyscale canvas
+   * Pass 1 — draw radial alpha blobs on a greyscale canvas (full page dimensions)
    * Pass 2 — remap alpha values through a fire colormap
    */
   function renderHeatmap() {
     if (!heatmapCanvas) return;
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    heatmapCanvas.width  = W;
-    heatmapCanvas.height = H;
+
+    // Size canvas to cover the full page, not just the viewport
+    const W = Math.max(document.documentElement.scrollWidth, window.innerWidth);
+    const H = Math.max(document.documentElement.scrollHeight, window.innerHeight);
+    heatmapCanvas.width        = W;
+    heatmapCanvas.height       = H;
+    heatmapCanvas.style.width  = W + 'px';
+    heatmapCanvas.style.height = H + 'px';
+
     const ctx = heatmapCanvas.getContext('2d');
     ctx.clearRect(0, 0, W, H);
 
@@ -153,16 +160,15 @@
     ac.globalCompositeOperation = 'source-over';
 
     for (const p of points) {
-      const px = p.x * W;
-      const py = p.y * H;
-      const r  = POINT_RADIUS * (p.w / 2 + 0.5); // weight scales radius slightly
-      const grad = ac.createRadialGradient(px, py, 0, px, py, r);
+      // Points are absolute page px — use directly, no conversion needed
+      const r    = POINT_RADIUS * (p.w / 2 + 0.5); // weight scales radius slightly
+      const grad = ac.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
       grad.addColorStop(0,   `rgba(255,255,255,${Math.min(0.35 * p.w, 0.9)})`);
       grad.addColorStop(0.4, `rgba(255,255,255,${Math.min(0.15 * p.w, 0.5)})`);
       grad.addColorStop(1,   'rgba(255,255,255,0)');
       ac.fillStyle = grad;
       ac.beginPath();
-      ac.arc(px, py, r, 0, Math.PI * 2);
+      ac.arc(p.x, p.y, r, 0, Math.PI * 2);
       ac.fill();
     }
 
@@ -185,11 +191,10 @@
   }
 
   /**
-   * Fire colormap: black → blue → cyan → green → yellow → red → white
+   * Fire colormap: black → blue → cyan → green → yellow → red
    * t in [0..1]
    */
   function colormapFire(t) {
-    // Control points [t, r, g, b]
     const stops = [
       [0.00,   0,   0, 128],
       [0.15,   0,   0, 255],
@@ -257,7 +262,6 @@
         sendResponse({ isTracking });
         break;
       case 'export_data':
-        savePoints();
         sendResponse({ points, storageKey });
         break;
     }
