@@ -27,6 +27,7 @@
   let cursorX = -1, cursorY = -1;
   let lastRecordedX = -1, lastRecordedY = -1;
   let isTracking = false;
+  let isScrolling = false;
   let isHeatmapVisible = false;
   let heatmapCanvas = null;
   let scrollTimer = null;
@@ -47,6 +48,7 @@
     isTracking = true;
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('scroll', onScroll, { passive: true });
+    document.addEventListener('click', onClick);
     dwellTimer = setInterval(checkDwell, DWELL_INTERVAL_MS);
   }
 
@@ -54,6 +56,7 @@
     isTracking = false;
     document.removeEventListener('mousemove', onMouseMove);
     document.removeEventListener('scroll', onScroll);
+    document.removeEventListener('click', onClick);
     clearInterval(dwellTimer);
     clearTimeout(scrollTimer);
   }
@@ -63,9 +66,18 @@
     cursorY = e.clientY;
   }
 
+  function onClick(e) {
+    addPoint(e.clientX, e.clientY, 5); // clicks = strongest intent signal
+  }
+
   function onScroll() {
+    isScrolling = true;
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(() => {
+      isScrolling = false;
+      // Reset so dwell doesn't fire immediately at the same spot as the scroll-stop point
+      lastRecordedX = cursorX;
+      lastRecordedY = cursorY;
       if (cursorX >= 0 && cursorY >= 0) {
         addPoint(cursorX, cursorY, 3); // scroll-stop = heavier weight
       } else {
@@ -76,7 +88,7 @@
   }
 
   function checkDwell() {
-    if (cursorX < 0) return;
+    if (cursorX < 0 || isScrolling) return; // skip dwell during scroll to avoid vertical artifact streaks
     const dx = cursorX - lastRecordedX;
     const dy = cursorY - lastRecordedY;
     if (Math.sqrt(dx * dx + dy * dy) < DWELL_MOVE_THRESHOLD) {

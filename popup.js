@@ -11,7 +11,12 @@ async function getActiveTab() {
 }
 
 function isSteam(url) {
-  return url && url.includes('steampowered.com');
+  try {
+    const h = new URL(url).hostname;
+    return h === 'steampowered.com' || h.endsWith('.steampowered.com');
+  } catch {
+    return false;
+  }
 }
 
 async function sendMsg(action, payload = {}) {
