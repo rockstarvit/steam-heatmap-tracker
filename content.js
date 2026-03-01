@@ -67,7 +67,7 @@
   }
 
   function onClick(e) {
-    addPoint(e.clientX, e.clientY, 5); // clicks = strongest intent signal
+    addPoint(e.clientX, e.clientY, 5, 'click'); // clicks = strongest intent signal
   }
 
   function onScroll() {
@@ -98,14 +98,12 @@
     lastRecordedY = cursorY;
   }
 
-  function addPoint(clientX, clientY, weight) {
+  function addPoint(clientX, clientY, weight, type) {
     if (points.length >= MAX_POINTS) points.shift(); // rolling window
     // Store as absolute page coordinates — viewport position + current scroll offset
-    points.push({
-      x: clientX + window.scrollX,
-      y: clientY + window.scrollY,
-      w: weight
-    });
+    const pt = { x: clientX + window.scrollX, y: clientY + window.scrollY, w: weight };
+    if (type) pt.t = type;
+    points.push(pt);
     if (points.length % 30 === 0) savePoints();
     if (isHeatmapVisible) scheduleRender();
   }
@@ -164,6 +162,9 @@
 
     if (points.length === 0) return;
 
+    const heatPoints  = points.filter(p => p.t !== 'click');
+    const clickPoints = points.filter(p => p.t === 'click');
+
     /* ── Pass 1: alpha intensity map ─────────────────────────── */
     const alphaCanvas = document.createElement('canvas');
     alphaCanvas.width  = W;
@@ -171,7 +172,7 @@
     const ac = alphaCanvas.getContext('2d');
     ac.globalCompositeOperation = 'source-over';
 
-    for (const p of points) {
+    for (const p of heatPoints) {
       // Points are absolute page px — use directly, no conversion needed
       const r    = POINT_RADIUS * (p.w / 2 + 0.5); // weight scales radius slightly
       const grad = ac.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
@@ -200,6 +201,20 @@
       dst[i + 3] = Math.round(intensity * 255); // final alpha
     }
     ctx.putImageData(colorImageData, 0, 0);
+
+    /* ── Pass 3: click markers (white bullseye) ───────────────── */
+    for (const p of clickPoints) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fill();
+    }
   }
 
   /**

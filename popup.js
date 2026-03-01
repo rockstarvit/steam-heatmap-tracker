@@ -91,8 +91,22 @@ async function init() {
   });
 
   document.getElementById('btn-clear').addEventListener('click', async () => {
-    if (!confirm('Clear all heatmap data for this page?')) return;
+    const btn = document.getElementById('btn-clear');
+    if (btn.dataset.armed !== 'true') {
+      btn.dataset.armed = 'true';
+      btn.innerHTML = '<span>⚠️</span> Click again to confirm';
+      setTimeout(() => {
+        if (btn.dataset.armed === 'true') {
+          btn.dataset.armed = 'false';
+          btn.innerHTML = '<span>🗑</span> Clear This Page\'s Data';
+        }
+      }, 3000);
+      return;
+    }
+    btn.dataset.armed = 'false';
     await sendMsg('clear_data');
+    btn.innerHTML = '<span>✅</span> Cleared!';
+    setTimeout(() => { btn.innerHTML = '<span>🗑</span> Clear This Page\'s Data'; }, 2000);
     const status = await sendMsg('get_status');
     updateUI(status);
   });
