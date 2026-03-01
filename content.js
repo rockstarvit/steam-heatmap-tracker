@@ -125,8 +125,8 @@
       left:          '0',
       zIndex:        '2147483647',
       pointerEvents: 'none',
-      opacity:       '0.82',
-      mixBlendMode:  'multiply',
+      opacity:       '0.95',
+      mixBlendMode:  'normal',
     });
     document.body.appendChild(heatmapCanvas);
   }
@@ -163,8 +163,8 @@
       // Points are absolute page px — use directly, no conversion needed
       const r    = POINT_RADIUS * (p.w / 2 + 0.5); // weight scales radius slightly
       const grad = ac.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-      grad.addColorStop(0,   `rgba(255,255,255,${Math.min(0.35 * p.w, 0.9)})`);
-      grad.addColorStop(0.4, `rgba(255,255,255,${Math.min(0.15 * p.w, 0.5)})`);
+      grad.addColorStop(0,   `rgba(255,255,255,${Math.min(0.55 * p.w, 1.0)})`);
+      grad.addColorStop(0.4, `rgba(255,255,255,${Math.min(0.28 * p.w, 0.7)})`);
       grad.addColorStop(1,   'rgba(255,255,255,0)');
       ac.fillStyle = grad;
       ac.beginPath();
@@ -185,7 +185,7 @@
       dst[i]     = r;
       dst[i + 1] = g;
       dst[i + 2] = b;
-      dst[i + 3] = Math.round(intensity * 210); // final alpha
+      dst[i + 3] = Math.round(intensity * 255); // final alpha
     }
     ctx.putImageData(colorImageData, 0, 0);
   }
