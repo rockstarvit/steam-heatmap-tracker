@@ -16,8 +16,8 @@
   'use strict';
 
   /* ─── Config ──────────────────────────────────────────────────── */
-  const DWELL_INTERVAL_MS    = 200;   // poll interval
-  const DWELL_MOVE_THRESHOLD = 8;     // px — if cursor moved less than this, record dwell
+  const DWELL_INTERVAL_MS    = 100;   // poll interval
+  const DWELL_MOVE_THRESHOLD = 15;    // px — if cursor moved less than this, record dwell
   const SCROLL_DEBOUNCE_MS   = 600;   // ms after last scroll event to record a scroll-stop point
   const POINT_RADIUS         = 90;    // heatmap blob radius in px
   const MAX_POINTS           = 4000;  // cap per URL to avoid storage bloat
